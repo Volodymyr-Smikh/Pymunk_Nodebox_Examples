@@ -68,47 +68,55 @@ def strategy(b=s3.body):
             b.angle=getAngle(x,y,*s1.body.position) #2*math.pi*random.random()
 
 def strategy2(b=s3.body):
-    u"""Стратегія робота, який сканує сектор ультразвуковим сенсором, з реалізацією найпростішого машинного навчаннм з підкріпленням (Q-learning). Кожні 10 кадрів визначається чи обєкти s1 або s2 знаходяться в межах сектора. Якщо це s1 то стан=об'єкт. Якщо це s2 то стан= антиоб'єкт. Якщо нічого, то стан=нічого.  Установлюється стан і винагорода. В Q-таблиці (див.) оновлюється сума винагород, яка відповдає стану і дії. Дія 0 - залишати напрямок, 1 - змінювати (випадковий кут). Далі алгоритм вибирає дію. З заданими імовірностями дія може бути випадковою або відповідати дії з максимальною сумою винагород для цього стану (оптимальною). Далі дія виконується. Вкінці алгоритм запобігає виїзду робота за межі кола."""
-    v=100
-    a=b.angle
-    b.velocity=v*cos(a), v*sin(a)
-    x,y=b.position
-    R=getDist(x,y,350,250)
-    ellipse(x, y, 200, 200, stroke=Color(0.5))
-    #line(x,y,x+100*cos(a),y+100*sin(a),stroke=Color(0.5))
-    line(x,y,x+100*cos(a+0.5),y+100*sin(a+0.5),stroke=Color(0.5))
-    line(x,y,x+100*cos(a-0.5),y+100*sin(a-0.5),stroke=Color(0.5))
+    u"""Удосконалена стратегія робота, який сканує сектор ультразвуковим сенсором з Q-learning."""
+    v = 100  # Швидкість робота
+    a = b.angle  # Кут нахилу робота
+    b.velocity = (v * cos(a), v * sin(a))  # Вектор швидкості на основі кута
+    x, y = b.position  # Поточна позиція робота
+    R = getDist(x, y, 350, 250)  # Відстань до центру (точка (350, 250))
+    ellipse(x, y, 200, 200, stroke=Color(0.5))  # Візуалізація робота (еліпс)
 
-    if canvas.frame%10==0: # кожні n кадірів
-        inS=inSector(s1.body.position[0], s1.body.position[1], x, y, 100, a)
-        inS2=inSector(S2[0].body.position[0], S2[0].body.position[1], x, y, 100, a)
+    # Візуалізація напрямку робота
+    line(x, y, x + 100 * cos(a + 0.5), y + 100 * sin(a + 0.5), stroke=Color(0.5))  # Лінія під кутом +0.5
+    line(x, y, x + 100 * cos(a - 0.5), y + 100 * sin(a - 0.5), stroke=Color(0.5))  # Лінія під кутом -0.5
 
-        # установлюємо стан і винагороду
+    if canvas.frame % 10 == 0:  # Кожні 10 кадрів
+        # Перевіряємо наявність об'єктів s1 та s2 в секторі
+        inS = inSector(s1.body.position[0], s1.body.position[1], x, y, 100, a)  # Об'єкт s1
+        inS2 = inSector(S2[0].body.position[0], S2[0].body.position[1], x, y, 100, a)  # Антиоб'єкт s2
+
+        # Установлюємо стан та винагороду на основі наявності об'єктів
         if inS:
-            state=1
-            reward=1 if b.action==0 else -1
+            state = 1  # Стан, якщо знайдено s1
+            reward = 1 if b.action == 0 else -1  # Винагорода за правильну дію (0 - залишити)
         elif inS2:
-            state=2
-            reward=-1 if b.action==0 else 1
+            state = 2  # Стан, якщо знайдено s2
+            reward = -1 if b.action == 0 else 1  # Винагорода за неправильну дію
         else:
-            state=0; reward=0
-        b.Q[state][b.action] +=reward # оновлюємо Q таблицю
-        print state, b.action, b.Q
+            state = 0  # Нічого не знайдено
+            reward = 0  # Винагорода відсутня
 
-        # вибираємо дію
-        #if random.choice([1, 0, 0]): # деколи випадково
-        #if random.random()<0.1:
-        act=b.Q[state][b.action]
-        if random.random()<abs(1.0/(act+0.1)): # 0.1 запобігає /0
-            b.action=random.choice([0, 1]) # випадково 50/50
+        # Застосування знижуваного навчання
+        alpha = 0.1  # Коефіцієнт навчання (визначає, як швидко модель адаптується)
+        gamma = 0.9  # Дисконтуючий фактор для винагороди (оцінка майбутніх винагород)
+        # Оновлення Q-таблиці з використанням формули навчання
+        b.Q[state][b.action] += alpha * (reward + gamma * np.max(b.Q[state]) - b.Q[state][b.action])
+
+        # Вибір дії з епсилон-жадібною стратегією
+        epsilon = 0.1  # Ймовірність вибору випадкової дії (експериментування)
+        if random.random() < epsilon:
+            b.action = random.choice([0, 1])  # Випадкова дія (залишити чи змінити)
         else:
-            b.action=np.argmax(b.Q[state]) # залишати чи змінювати?
+            b.action = np.argmax(b.Q[state])  # Вибір найкращої дії на основі Q-таблиці
 
-        if b.action: # якщо змінювати
-            b.angle=2*math.pi*random.random()
+        # Змінюємо кут, якщо потрібно
+        if b.action:  # Якщо обрано змінити кут
+            b.angle = 2 * math.pi * random.random()  # Випадковий новий кут
 
-        if R>180: # запобігти виїзду за межі
-            b.angle=getAngle(x,y,350,250)
+        # Запобігання виїзду робота за межі
+        if R > 180:  # Якщо відстань до центру більше 180
+            b.angle = getAngle(x, y, 350, 250)  # Повертаємо робота до центру
+
 
 def scr(s,s0,s3,p=1):
     bx,by=s.body.position
